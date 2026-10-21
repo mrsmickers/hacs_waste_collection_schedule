@@ -87,16 +87,22 @@ class Source:
             )
             form.raise_for_status()
 
-            def operation(marker):
-                match = re.search(
-                    re.escape(marker) + r'.*?"operationId":"([^"]+)"', form.text
-                )
+            def operation(marker, *, page_scoped=False):
+                pattern = re.escape(marker)
+                if page_scoped:
+                    # Mendix now qualifies snippet widgets with their parent page.
+                    pattern = (
+                        re.escape(marker[:-1])
+                        + r'(?:\.BartecCollective\.Jobs_Get_Combined)?"'
+                    )
+                match = re.search(pattern + r'.*?"operationId":"([^"]+)"', form.text)
                 if not match:
                     raise ValueError(f"Missing Mendix operation for {marker}")
                 return match.group(1)
 
             search_id = operation(
-                '"buttonId":"p.BHCCTheme.Template_SearchFieldOnly.actionButton3"'
+                '"buttonId":"p.BHCCTheme.Template_SearchFieldOnly.actionButton3"',
+                page_scoped=True,
             )
             select_id = operation('"attribute":"BHCCTheme.AddressTemp_SelectedAddress"')
             next_id = operation(

@@ -212,6 +212,59 @@ def test_fetch_uses_council_dates_and_excludes_unsubscribed_garden():
     )
 
 
+def test_scoped_mendix_search_widget_uses_its_own_operation():
+    session = CouncilSession()
+    original_get = session.get
+
+    def scoped_form(url, **kwargs):
+        response = original_get(url, **kwargs)
+        response.text = response.text.replace(
+            'Template_SearchFieldOnly.actionButton3"',
+            'Template_SearchFieldOnly.actionButton3.BartecCollective.Jobs_Get_Combined"',
+        )
+        return response
+
+    session.get = scoped_form
+    with patch.object(brighton_hove_gov_uk.requests, "Session", return_value=session):
+        result = brighton_hove_gov_uk.Source("BN2 1AA", "000011111111").fetch()
+    assert len(result) == 3
+    operations = [
+        kw["json"].get("operationId")
+        for method, _, kw in session.calls
+        if method == "post"
+    ]
+    assert operations == [None, "search-id", "select-id", "next-id"]
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "Template_SearchFieldOnly.actionButton30",
+        "Template_SearchFieldOnly.actionButton3.Unrelated.OtherPage",
+    ],
+)
+def test_search_widget_rejects_unrelated_prefix_or_page(replacement):
+    session = CouncilSession()
+    original_get = session.get
+
+    def other_form(url, **kwargs):
+        response = original_get(url, **kwargs)
+        response.text = response.text.replace(
+            "Template_SearchFieldOnly.actionButton3", replacement
+        )
+        return response
+
+    session.get = other_form
+    with patch.object(brighton_hove_gov_uk.requests, "Session", return_value=session):
+        with pytest.raises(ValueError, match="Missing Mendix operation"):
+            brighton_hove_gov_uk.Source("BN2 1AA", "000011111111").fetch()
+    assert [
+        kw["json"].get("operationId")
+        for method, _, kw in session.calls
+        if method == "post"
+    ] == [None]
+
+
 def test_postcode_must_match_exactly_not_prefix():
     session = CouncilSession()
     session.search_postcode = "BN2 1AAA"
